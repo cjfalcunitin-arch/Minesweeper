@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minesweeper Mobile Zoom</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Prevent scrolling */
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+  }
+
+  h1 {
+    margin: 10px 0;
+  }
+
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  #board {
+    display: grid;
+    gap: 2px;
+    touch-action: manipulation;
+    max-width: 100%;
+    max-height: 80vh;
+    overflow: hidden;
+  }
+
+  .cell {
+    background-color: #ccc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    font-size: 18px;
+  }
+
+  .cell.revealed { background-color: #eee; cursor: default; }
+  .cell.mine { background-color: #e53935; color: #fff; }
+  .cell.flag { background-color: #fbc02d; }
+
+  button {
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  button.active { background-color: #fbc02d; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>Minesweeper</h1>
+
+<div id="controls">
+  Difficulty:
+  <select id="difficulty">
+    <option value="easy">Easy (8×8, 10 mines)</option>
+    <option value="medium">Medium (16×16, 40 mines)</option>
+    <option value="hard">Hard (20×20, 100 mines)</option>
+  </select>
+  <button onclick="initBoard()">Reset</button>
+  <button id="flagModeBtn">Flag Mode: OFF</button>
+  <button onclick="zoomIn()">+</button>
+  <button onclick="zoomOut()">-</button>
+</div>
+
+<div id="board"></div>
+
+<script>
+let board = [];
+let rows = 8, cols = 8, minesCount = 10;
+let revealedCount = 0;
+let gameOver = false;
+let flagMode = false;
+let cellSize = 35; // initial cell size in px
+
+const boardDiv = document.getElementById('board');
+const difficultySelect = document.getElementById('difficulty');
+const flagBtn = document.getElementById('flagModeBtn');
+
+difficultySelect.addEventListener('change', initBoard);
+flagBtn.addEventListener('click', () => {
+  flagMode = !flagMode;
+  flagBtn.textContent = `Flag Mode: ${flagMode ? 'ON' : 'OFF'}`;
+  flagBtn.classList.toggle('active', flagMode);
+});
+
+function initBoard() {
+  gameOver = false;
+  board = [];
+  revealedCount = 0;
+
+  const difficulty = difficultySelect.value;
+  if (difficulty === 'easy') { rows = 10; cols = 8; minesCount = 10; }
+  else if (difficulty === 'medium') { rows = 18; cols = 14; minesCount = 40; }
+  else if (difficulty === 'hard') { rows = 24; cols = 18; minesCount = 100; }
+
+  boardDiv.innerHTML = '';
+  boardDiv.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+
+  // Create empty board
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) {
+      const cell = { mine: false, revealed: false, adjacent: 0, flagged: false, element: null };
+      row.push(cell);
+    }
+    board.push(row);
+  }
+
+  // Place mines
+  let placedMines = 0;
+  while (placedMines < minesCount) {
+    const r = Math.floor(Math.random() * rows);
+    const c = Math.floor(Math.random() * cols);
+    if (!board[r][c].mine) { board[r][c].mine = true; placedMines++; }
+  }
+
+  // Calculate adjacent mines
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (board[r][c].mine) continue;
+      let count = 0;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+            if (board[nr][nc].mine) count++;
+          }
+        }
+      }
+      board[r][c].adjacent = count;
+    }
+  }
+
+  // Create HTML cells
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const div = document.createElement('div');
+      div.classList.add('cell');
+      div.style.width = `${cellSize}px`;
+      div.style.height = `${cellSize}px`;
+      div.addEventListener('click', () => cellClick(r, c));
+      board[r][c].element = div;
+      boardDiv.appendChild(div);
+    }
+  }
+}
+
+function cellClick(r, c) {
+  if (gameOver) return;
+  if (flagMode) toggleFlag(r, c);
+  else revealCell(r, c);
+}
+
+function revealCell(r, c) {
+  const cell = board[r][c];
+  if (cell.revealed || cell.flagged) return;
+
+  cell.revealed = true;
+  cell.element.classList.add('revealed');
+
+  if (cell.mine) {
+    cell.element.classList.add('mine');
+    cell.element.textContent = '💣';
+    alert('Game Over!');
+    gameOver = true;
+    revealAllMines();
+    return;
+  }
+
+  revealedCount++;
+  if (cell.adjacent > 0) cell.element.textContent = cell.adjacent;
+  else {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) revealCell(nr, nc);
+      }
+    }
+  }
+
+  if (revealedCount === rows * cols - minesCount) {
+    alert('You Win! 🎉');
+    gameOver = true;
+    revealAllMines();
+  }
+}
+
+function toggleFlag(r, c) {
+  const cell = board[r][c];
+  if (cell.revealed) return;
+  cell.flagged = !cell.flagged;
+  if (cell.flagged) { cell.element.classList.add('flag'); cell.element.textContent = '🚩'; }
+  else { cell.element.classList.remove('flag'); cell.element.textContent = ''; }
+}
+
+function revealAllMines() {
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = board[r][c];
+      if (cell.mine) {
+        cell.element.classList.add('revealed', 'mine');
+        cell.element.textContent = '💣';
+      }
+    }
+  }
+}
+
+// Zoom in/out
+function zoomIn() { changeCellSize(5); }
+function zoomOut() { changeCellSize(-5); }
+
+function changeCellSize(delta) {
+  cellSize = Math.max(20, Math.min(60, cellSize + delta)); // limit 20-60px
+  boardDiv.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = board[r][c];
+      if (cell.element) {
+        cell.element.style.width = `${cellSize}px`;
+        cell.element.style.height = `${cellSize}px`;
+      }
+    }
+  }
+}
+
+// Initialize game
+initBoard();
+</script>
+</body>
+</html>
